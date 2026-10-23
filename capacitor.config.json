@@ -1,0 +1,6 @@
+{
+  "appId": "br.com.gustavo.livrariarara",
+  "appName": "Livraria Rara",
+  "webDir": "dist",
+  "android": { "backgroundColor": "#0d1018" }
+}

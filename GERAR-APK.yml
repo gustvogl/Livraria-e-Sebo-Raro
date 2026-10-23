@@ -1,0 +1,93 @@
+name: Gerar APK da Livraria Rara
+run-name: APK Android • ${{ github.ref_name }} • ${{ github.run_number }}
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rara-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Compilar e disponibilizar APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v7
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Instalar Android SDK 34 e ferramentas
+        shell: bash
+        run: |
+          if [[ -z "${ANDROID_HOME:-}" ]]; then
+            echo "::error::O runner não disponibilizou ANDROID_HOME. Use ubuntu-24.04 hospedado pelo GitHub."
+            exit 1
+          fi
+          RARA_SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$RARA_SDKMANAGER" ]]; then
+            RARA_SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          "$RARA_SDKMANAGER" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
+
+      - name: Instalar dependências do projeto
+        run: npm ci
+
+      - name: Verificar câmera, galeria e cancelamento
+        run: npm test
+
+      - name: Preparar arquivos web e plugins Android
+        run: npm run android:sync
+
+      - name: Compilar APK de demonstração
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          npm run android:build
+
+      - name: Conferir o APK produzido
+        shell: bash
+        run: |
+          test -s apk/Livraria-Rara.apk
+          "${ANDROID_HOME}/build-tools/34.0.0/apksigner" verify --verbose apk/Livraria-Rara.apk
+
+      - name: Disponibilizar APK para download
+        uses: actions/upload-artifact@v7
+        with:
+          name: Livraria-Rara-APK
+          path: apk/Livraria-Rara.apk
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Mostrar instruções de download
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## APK da Livraria Rara pronto
+
+          1. Nesta página, abra **Artifacts**.
+          2. Baixe **Livraria-Rara-APK** e extraia o ZIP.
+          3. Instale **Livraria-Rara.apk** no Android.
+          4. No cadastro, toque em **Tirar foto / Galeria**.
+
+          O APK é uma versão de demonstração, assinada com chave de depuração.
+          SUMMARY
